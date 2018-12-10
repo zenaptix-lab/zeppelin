@@ -13,6 +13,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+FROM ubuntu:16.04 AS builder
+
+ENV Z_VERSION="0.9.0-SNAPSHOT"
+
+ENV MVN="3.5.4" \
+    MAVEN_OPTS="-Xmx1024m -XX:MaxPermSize=512m"
+
+RUN echo "Install build dependencies" && \
+    apt update && apt upgrade -y && \
+    DEBIAN_FRONTEND=noninteractive apt install -y \
+      git openjdk-8-jdk npm nodejs libfontconfig r-base-dev r-cran-evaluate wget
+
+RUN wget http://www-eu.apache.org/dist/maven/maven-3/$MVN/binaries/apache-maven-$MVN-bin.tar.gz && \
+    tar -zxf apache-maven-$MVN-bin.tar.gz -C /usr/local/ && \
+    ln -s /usr/local/apache-maven-$MVN/bin/mvn /usr/local/bin/mvn
+
+RUN echo "Download and Compile Zeppelin" && \
+    git clone https://github.com/zenaptix-lab/zeppelin.git /zeppelin-build && \
+    cd /zeppelin-build && \
+    mvn -T 2C package -DskipTests -Pbuild-distr
+
+WORKDIR /zeppelin-build
+
+RUN mv /zeppelin-build/zeppelin-distribution/target/zeppelin-*/zeppelin-* /zeppelin
+
+#===============================================================================
+
 FROM ubuntu:16.04
 MAINTAINER Apache Software Foundation <dev@zeppelin.apache.org>
 
@@ -97,11 +124,13 @@ RUN echo "$LOG_TAG Cleanup" && \
     apt-get autoclean && \
     apt-get clean
 
-RUN echo "$LOG_TAG Download Zeppelin binary" && \
-    wget -O /tmp/zeppelin-${Z_VERSION}-bin-all.tgz http://archive.apache.org/dist/zeppelin/zeppelin-${Z_VERSION}/zeppelin-${Z_VERSION}-bin-all.tgz && \
-    tar -zxvf /tmp/zeppelin-${Z_VERSION}-bin-all.tgz && \
-    rm -rf /tmp/zeppelin-${Z_VERSION}-bin-all.tgz && \
-    mv /zeppelin-${Z_VERSION}-bin-all ${Z_HOME}
+# RUN echo "$LOG_TAG Download Zeppelin binary" && \
+#     wget -O /tmp/zeppelin-${Z_VERSION}-bin-all.tgz http://archive.apache.org/dist/zeppelin/zeppelin-${Z_VERSION}/zeppelin-${Z_VERSION}-bin-all.tgz && \
+#     tar -zxvf /tmp/zeppelin-${Z_VERSION}-bin-all.tgz && \
+#     rm -rf /tmp/zeppelin-${Z_VERSION}-bin-all.tgz && \
+#     mv /zeppelin-${Z_VERSION}-bin-all ${Z_HOME}
+
+COPY --from=builder /zeppelin ${Z_HOME}
 
 COPY log4j.properties ${Z_HOME}/conf/
 
